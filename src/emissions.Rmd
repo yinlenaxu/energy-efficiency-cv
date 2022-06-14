@@ -1,0 +1,301 @@
+---
+title: "R Notebook"
+author: Yinlena Xu
+output: html_notebook
+---
+
+# Kaggle data
+
+```{r}
+model_characteristics <- function(df){
+  out <- df[sapply(df, is.character)][1,]
+  return(out)
+}
+
+model_means <- function(df) {
+  df_VGG16 <- df[1:3,]
+  df_VGG16 <- colMeans(df_VGG16[sapply(df_VGG16, is.numeric)])
+  
+  df_VGG19 <- df[4:6,]
+  df_VGG19 <- colMeans(df_VGG19[sapply(df_VGG19, is.numeric)])
+  
+  df_ResNet <- df[7:9,]
+  df_ResNet <- colMeans(df_ResNet[sapply(df_ResNet, is.numeric)])
+  
+  out <- data.frame(round(df_VGG16, 3), round(df_VGG19, 3), round(df_ResNet, 3))
+  return(out)
+}
+```
+
+```{r}
+(files <- list.files(path = "../data/raw/kaggle", pattern = "*.csv"))
+```
+
+```{r}
+df <- read.csv(paste("../data/raw/kaggle", files[1], sep="/"))
+m <- model_means(df)
+c <- model_characteristics(df)
+
+for (i in 2:length(files)) {
+  df <- read.csv(paste("../data/raw/kaggle", files[i], sep="/"))
+  m <- cbind(m, model_means(df))
+  c <- rbind(c, model_characteristics(df))
+}
+
+write.csv(m, file = "../data/processed/model_emissions.csv")
+write.csv(c, file = "../data/processed/model_characteristics.csv")
+```
+
+```{r}
+df <- read.csv(paste("../data/raw/kaggle", files[1], sep="/"))
+
+for (i in 2:length(files)) {
+  aux <- read.csv(paste("../data/raw/kaggle", files[i], sep="/"))
+  df <- rbind(df, aux)
+}
+
+df['architecture'] <- rep(c(rep("VGG16", 3), rep("VGG19", 3), rep("ResNet50", 3)), length(files))
+df['data'] <- c(rep("CIFAR10", 9*3), rep("MNIST", 9*2))
+df
+```
+
+```{r}
+df2 <- data.frame(matrix(ncol = 0, nrow = 6))
+df2['architecture'] <- rep(c("VGG16", "VGG19", "ResNet50"), 2)
+df2['data'] <- c(rep("CIFAR10", 3), rep("MNIST", 3))
+df2['input_size'] <- c(rep(32*32, 3), rep(48*48, 3))
+df2['parameters'] <- c(33638218, 38947914, 48802698, 33638218, 38947914, 73968522)
+df2['trainable_parameters'] <- c(18923530, 18923530, 25214986, 18923530, 18923530, 50380810)
+df2['flops'] <- c(21268268928, 26704938880, 6675494400, 46339966848, 58572474240, 16289166848)
+df2['trainable_flops'] <- c(1210845056, 1210845056, 1613498240, 1210845056, 1210845056, 3224110976)
+df2
+```
+
+```{r}
+library(ggplot2)
+require(gridExtra)
+
+p1 <- ggplot(df, aes(x=data, y=emissions)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Emissions (CO2-eq)", x = "Input Data")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+p2 <- ggplot(df, aes(x=data, y=energy_consumed)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Energy Consumed (kWh)", x = "Input Data")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+p3 <- ggplot(df, aes(x=architecture, y=emissions)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Emissions (CO2-eq)", x = "Model Architecture")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+p4 <- ggplot(df, aes(x=architecture, y=energy_consumed)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Energy Consumed (kWh)", x = "Model Architecture")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+grid.arrange(p1, p2, p3, p4, ncol=2)
+```
+
+```{r}
+p5 <- ggplot(df2, aes(x=data, y=flops)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "FLOPs", x = "Input Data")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+p6 <- ggplot(df2, aes(x=architecture, y=flops)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "FLOPs", x = "Model Architecture")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+grid.arrange(p5, p6, p5, p6, ncol=2)
+```
+
+```{r}
+p7 <- ggplot(df, aes(x=region, y=emissions)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Emissions (CO2-eq)", x = "Region")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+p8 <- ggplot(df, aes(x=region, y=energy_consumed)) + 
+  geom_violin(trim=FALSE, fill="gray")+
+  labs(y = "Energy Consumed (kWh)", x = "Region")+
+  geom_boxplot(width=0.1)+
+  theme_classic()
+
+grid.arrange(p7, p8, p7, p8, ncol=2)
+```
+
+```{r}
+library(ltm)
+biserial.cor(df$emissions, df$data) # weakly correlated
+biserial.cor(df$energy_consumed, df$data) # strongly correlated
+biserial.cor(df2$flops, df2$data) # strongly correlated
+```
+
+```{r}
+kruskal.test(df$emissions ~ df$architecture) # strongly correlated
+kruskal.test(df$energy_consumed ~ df$architecture) # strongly correlated
+kruskal.test(df2$flops ~ df2$architecture) # weakly correlated
+```
+
+```{r}
+kruskal.test(df$emissions ~ df$region) # strongly correlated
+kruskal.test(df$energy_consumed ~ df$region) # strongly correlated
+```
+
+```{r}
+df['accuracy'] <- c(0.6199, 0.6199, 0.6170,
+                    0.6007, 0.6001, 0.6046,
+                    0.3045, 0.2986, 0.3033,
+                    0.6182, 0.6138, 0.6182,
+                    0.6311, 0.6048, 0.6113,
+                    0.1000, 0.1000, 0.1000,
+                    0.6175, 0.6249, 0.6151,
+                    0.6347, 0.6056, 0.6039,
+                    0.2141, 0.2158, 0.2209,
+                    0.9429, 0.9434, 0.9426,
+                    0.9258, 0.9454, 0.9474,
+                    0.8682, 0.8993, 0.8899,
+                    0.9449, 0.9428, 0.9502,
+                    0.9282, 0.9450, 0.9420,
+                    0.8873, 0.8904, 0.8873)
+
+df['energy'] <- c(df$energy_consumed[1], df$energy_consumed[2]-df$energy_consumed[1], df$energy_consumed[3]-df$energy_consumed[2],
+                  df$energy_consumed[4], df$energy_consumed[5]-df$energy_consumed[4], df$energy_consumed[6]-df$energy_consumed[5],
+                  df$energy_consumed[7], df$energy_consumed[8]-df$energy_consumed[7], df$energy_consumed[9]-df$energy_consumed[8],
+                  df$energy_consumed[10], df$energy_consumed[11]-df$energy_consumed[10], df$energy_consumed[12]-df$energy_consumed[11],
+                  df$energy_consumed[13], df$energy_consumed[14]-df$energy_consumed[13], df$energy_consumed[15]-df$energy_consumed[14],
+                  df$energy_consumed[16], df$energy_consumed[17]-df$energy_consumed[16], df$energy_consumed[18]-df$energy_consumed[17],
+                  df$energy_consumed[19], df$energy_consumed[20]-df$energy_consumed[19], df$energy_consumed[21]-df$energy_consumed[20],
+                  df$energy_consumed[22], df$energy_consumed[23]-df$energy_consumed[22], df$energy_consumed[24]-df$energy_consumed[23],
+                  df$energy_consumed[25], df$energy_consumed[26]-df$energy_consumed[25], df$energy_consumed[27]-df$energy_consumed[26],
+                  df$energy_consumed[28], df$energy_consumed[29]-df$energy_consumed[28], df$energy_consumed[30]-df$energy_consumed[29],
+                  df$energy_consumed[31], df$energy_consumed[32]-df$energy_consumed[31], df$energy_consumed[33]-df$energy_consumed[32],
+                  df$energy_consumed[34], df$energy_consumed[35]-df$energy_consumed[34], df$energy_consumed[36]-df$energy_consumed[35],
+                  df$energy_consumed[37], df$energy_consumed[38]-df$energy_consumed[37], df$energy_consumed[39]-df$energy_consumed[38],
+                  df$energy_consumed[40], df$energy_consumed[41]-df$energy_consumed[40], df$energy_consumed[42]-df$energy_consumed[41],
+                  df$energy_consumed[43], df$energy_consumed[44]-df$energy_consumed[43], df$energy_consumed[45]-df$energy_consumed[44])
+
+df['score'] <- df$accuracy/df$energy
+df
+```
+
+```{r}
+df.score <- data.frame(matrix(ncol = 3, nrow = 0))
+colnames(df.score) <- c("accuracy", "energy", "score")
+
+c <- 1
+for (i in 1:15) {
+  df.score[i,] <- c(mean(df$accuracy[c:(c+2)]),
+                    mean(df$energy[c:(c+2)]),
+                    mean(df$score[c:(c+2)]))
+  c <- c+3
+}
+
+df.score['architecture'] <- rep(c("VGG16", "VGG19", "ResNet50"), 5)
+df.score['data'] <- c(rep("CIFAR10", 9), rep("MNIST", 6))
+df.score['region'] <- c(rep("oregon", 3), rep("south carolina", 3), rep("taipei city", 3),
+                        rep("oregon", 3), rep("south carolina", 3))
+
+write.csv(df.score, file = "../data/processed/scores.csv")
+
+df.score
+```
+
+# Grilla
+
+```{r}
+library(rjson)
+setwd("../data/raw/grilla/results_summary")
+data <- data.frame(matrix(ncol = 4, nrow = 0))
+colnames(data) <- c("accuracy", "watts", "joules", "time")
+data2 <- data.frame(matrix(ncol = 3, nrow = 0))
+colnames(data2) <- c("duration", "emissions", "energy_consumed")
+dirs <- list.files(path = ".")
+
+for (i in 1:length(dirs)) {
+  tab <- read.table(paste(dirs[i], "accuracy.txt", sep = "/"))
+  acc <- tab[1,51]
+  
+  file <- list.files(path = dirs[i], pattern = "*.json")
+  summ <- fromJSON(file=paste(dirs[i], file, sep = "/"))
+  
+  data[dirs[i],] <- c(substring(acc,1, nchar(acc)-1),
+                      summ$Wh, summ$joules, summ$timeExecution)
+  
+  emi <- read.csv(paste(dirs[i], "emissions.csv", sep = "/"))
+  
+  data2[dirs[i],] <- c(emi$duration, emi$emissions, emi$energy_consumed)
+                        
+}
+
+df.watt <- data.frame(matrix(ncol = 4, nrow = 0))
+colnames(df.watt) <- c("accuracy", "watts", "joules", "time")
+
+aux <- data[1:3, ]
+df.watt[1,] <- colMeans(sapply(aux, as.numeric))
+aux <- data[4:6, ]
+df.watt[2,] <- colMeans(sapply(aux, as.numeric))
+aux <- data[7:9, ]
+df.watt[3,] <- colMeans(sapply(aux, as.numeric))
+aux <- data[10:12, ]
+df.watt[4,] <- colMeans(sapply(aux, as.numeric))
+aux <- data[13:15, ]
+df.watt[5,] <- colMeans(sapply(aux, as.numeric))
+aux <- data[16:18, ]
+df.watt[6,] <- colMeans(sapply(aux, as.numeric))
+
+df.watt["architecture"] <- rep(c("ResNet50", "VGG16", "VGG19"), 2)
+df.watt["data"] <- c(rep("CIFAR10", 3), rep("MNIST", 3))
+
+data2["architecture"] <- rep(c(rep("ResNet50", 3), rep("VGG16", 3), rep("VGG19", 3)), 2)
+data2["data"] <- c(rep("CIFAR10", 9), rep("MNIST", 9))
+
+df.code <- data.frame(matrix(ncol = 3, nrow = 0))
+colnames(df.code) <- c("duration", "emissions", "energy_consumed")
+
+aux <- data2[1:3, ]
+df.code[1,] <- colMeans(sapply(aux, as.numeric))
+aux <- data2[4:6, ]
+df.code[2,] <- colMeans(sapply(aux, as.numeric))
+aux <- data2[7:9, ]
+df.code[3,] <- colMeans(sapply(aux, as.numeric))
+aux <- data2[10:12, ]
+df.code[4,] <- colMeans(sapply(aux, as.numeric))
+aux <- data2[13:15, ]
+df.code[5,] <- colMeans(sapply(aux, as.numeric))
+aux <- data2[16:18, ]
+df.code[6,] <- colMeans(sapply(aux, as.numeric))
+
+df.watt
+df.code
+```
+
+```{r}
+df.grilla.means <- cbind(df.watt, df.code)
+df.grilla.means['score'] <- df.grilla.means$accuracy/df.grilla.means$energy_consumed
+df.grilla.means['wattmeter_energy_consumed'] <- df.grilla.means$watts*0.001
+df.grilla.means['wattmeter_score'] <- df.grilla.means$accuracy/df.grilla.means$wattmeter_energy_consumed
+
+write.csv(df.grilla.means, file = "../data/processed/grilla.csv")
+
+df.grilla.means
+```
+
+```{r}
+df.grilla <- cbind(sapply(data, as.numeric), data2)
+df.grilla['score'] <- df.grilla$accuracy/df.grilla$energy_consumed
+df.grilla['wattmeter_energy_consumed'] <- (df.grilla$watts/1000)/(df.grilla$time/3600)
+df.grilla['wattmeter_score'] <- df.grilla$accuracy/df.grilla$wattmeter_energy_consumed
+df.grilla
+```
+
